@@ -1741,6 +1741,11 @@ void dhcp (packet)
 		type = "DHCPACK";
 		break;
 
+	      case DHCPFORCERENEW:
+		handler = dhcpforcerenew;
+		type = "DHCPFORCERENEW";
+		break;
+
 	      default:
 		return;
 	}
@@ -2337,6 +2342,60 @@ void dhcpnak (packet)
 
 	client -> state = S_INIT;
 	state_init (client);
+}
+
+
+/* Define a non-authenticated DHCPFORCERENEW handler */
+
+void dhcpforcerenew (packet)
+	struct packet *packet;
+{
+	struct interface_info *ip = packet -> interface;
+	struct client_state *client = NULL;
+
+	/* if xid provided is that of an existing client */
+	for (client=ip->client; client; client=client->next) {
+		if (client->xid == packet->raw->xid) {
+			break;
+		}
+	}
+	if (client) {
+		dhcpforcerenew_request (client);
+		return;
+	} else {
+	/* apply to client(s) associated to interface */
+		for (client=ip->client; client; client=client->next) {
+			dhcpforcerenew_request (client);
+		}
+	}
+}
+
+void dhcpforcerenew_request (client)
+	struct client_state *client;
+{
+	if (!client) {
+		log_error ("forcerenew: no client provided");
+		return;
+	}
+	if (client->state != S_BOUND) {
+		log_info ("forcerenew: client not in BOUND state");
+		return;
+	}
+	log_info ("forcerenew: entering the RENEWING state");
+
+	/* Change state to RENEWING */
+	client->destination = iaddr_broadcast;
+	client->state = S_RENEWING;
+	client->first_sending = cur_time;
+	client->interval = client->config->initial_interval;
+
+	/* Make a DHCPREQUEST packet from active lease; */
+	/* the DHCPACK handler will free memory. */
+	make_request (client, client->active);
+	client->xid = client->packet.xid;
+
+	/* Send the DHCPREQUEST packet. */
+	send_request (client);
 }
 
 /* Send out a DHCPDISCOVER packet, and set a timeout to send out another
@@ -3403,6 +3462,7 @@ void make_request (client, lease)
 	client -> packet.hlen = client -> interface -> hw_address.hlen - 1;
 	client -> packet.hops = 0;
 	client -> packet.xid = client -> xid;
+	log_info("xid %x", client->xid);
 	client -> packet.secs = 0; /* Filled in by send_request. */
 
 	/* If we own the address we're requesting, put it in ciaddr;

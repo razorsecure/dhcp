@@ -172,6 +172,7 @@ struct dhcp_packet {
 #define DHCPNAK			6
 #define DHCPRELEASE		7
 #define DHCPINFORM		8
+#define DHCPFORCERENEW	9
 #define DHCPLEASEQUERY		10
 #define DHCPLEASEUNASSIGNED	11
 #define DHCPLEASEUNKNOWN	12

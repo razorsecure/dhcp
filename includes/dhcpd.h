@@ -2989,6 +2989,9 @@ extern struct client_config top_level_config;
 void dhcpoffer (struct packet *);
 void dhcpack (struct packet *);
 void dhcpnak (struct packet *);
+void dhcpforcerenew (struct packet *);
+
+void dhcpforcerenew_request (struct client_state *);
 
 void send_discover (void *);
 void send_request (void *);
