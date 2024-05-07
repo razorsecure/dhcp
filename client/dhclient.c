@@ -2377,8 +2377,12 @@ void dhcpforcerenew_request (client)
 		log_error ("forcerenew: no client provided");
 		return;
 	}
-	if (client->state != S_BOUND) {
-		log_info ("forcerenew: client not in BOUND state");
+	/*due to bug https://github.com/razorsecure/delta/issues/8065 we intentionally break the force renew spec to
+	allow any states with active leases. An active lease is required because later on we construct a new request
+	based off said active lease, and i dont know enough of dhclient to start a new retest from scratch
+	*/
+	if (!((client->state == S_REQUESTING) || (client->state == S_BOUND) || (client->state == S_RENEWING))) {
+		log_info ("forcerenew: client not in an active state");
 		return;
 	}
 	log_info ("forcerenew: entering the RENEWING state");
