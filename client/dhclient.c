@@ -2360,28 +2360,29 @@ void dhcpforcerenew (packet)
 		}
 	}
 	if (client) {
-		dhcpforcerenew_request (client);
+		dhcpforcerenew_request (client, packet);
 		return;
 	} else {
 	/* apply to client(s) associated to interface */
 		for (client=ip->client; client; client=client->next) {
-			dhcpforcerenew_request (client);
+			dhcpforcerenew_request (client, packet);
 		}
 	}
 }
 
-void dhcpforcerenew_request (client)
+void dhcpforcerenew_request (client, packet)
 	struct client_state *client;
+	struct packet *packet;
 {
-	if (!client) {
-		log_error ("forcerenew: no client provided");
+	if (!client || !packet) {
+		log_error ("forcerenew: invalid client or packet");
 		return;
 	}
 	/*due to bug https://github.com/razorsecure/delta/issues/8065 we intentionally break the force renew spec to
 	allow any states with active leases. An active lease is required because later on we construct a new request
 	based off said active lease, and i dont know enough of dhclient to start a new retest from scratch
 	*/
-	if (!((client->state == S_REQUESTING) || (client->state == S_BOUND) || (client->state == S_RENEWING))) {
+	if (!((client->state == S_REQUESTING) || (client->state == S_BOUND) || (client->state == S_RENEWING) || (client->state ==  S_REBINDING))) {
 		log_info ("forcerenew: client not in an active state");
 		return;
 	}
@@ -2392,11 +2393,11 @@ void dhcpforcerenew_request (client)
 	client->state = S_RENEWING;
 	client->first_sending = cur_time;
 	client->interval = client->config->initial_interval;
+	client->xid = packet->raw->xid;
 
 	/* Make a DHCPREQUEST packet from active lease; */
 	/* the DHCPACK handler will free memory. */
 	make_request (client, client->active);
-	client->xid = client->packet.xid;
 
 	/* Send the DHCPREQUEST packet. */
 	send_request (client);
