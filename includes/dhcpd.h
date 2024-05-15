@@ -2991,7 +2991,7 @@ void dhcpack (struct packet *);
 void dhcpnak (struct packet *);
 void dhcpforcerenew (struct packet *);
 
-void dhcpforcerenew_request (struct client_state *);
+void dhcpforcerenew_request (struct client_state *, struct packet *);
 
 void send_discover (void *);
 void send_request (void *);
