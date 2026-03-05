@@ -331,9 +331,9 @@ do_number_hash(const void *key, unsigned len, unsigned size)
 unsigned
 do_ip4_hash(const void *key, unsigned len, unsigned size)
 {
-	u_int32_t number;
+	u_int32_t number = 0;
 
-	memcpy(&number, key, 4);
+	memcpy(&number, key, len < 4 ? len : 4);
 
 	number = ntohl(number);
 
