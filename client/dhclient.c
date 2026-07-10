@@ -2489,6 +2489,52 @@ void dhcpnak (packet)
 }
 
 
+/* Hitachi FORCERENEW reconfiguration timeout (spec clause c/f).
+   Tr = 1 second: if the FORCERENEW-triggered DHCPREQUEST is not answered by a
+   DHCPNAK within this window, the client must relinquish its lease and
+   reconfigure from scratch, exactly as at boot. ISC's RENEWING state otherwise
+   only gives up at lease expiry, which for our leases is up to an hour away. */
+#define FORCERENEW_TR_SECONDS 1
+
+static void forcerenew_timeout (cpp)
+	void *cpp;
+{
+	struct client_state *client = cpp;
+
+	/* A DHCPNAK or DHCPACK moves us out of RENEWING; only act when the
+	   FORCERENEW DHCPREQUEST went unanswered. */
+	if (client -> state != S_RENEWING)
+		return;
+
+	log_info ("forcerenew: no DHCPNAK within %ds, releasing lease and "
+		  "reconfiguring", FORCERENEW_TR_SECONDS);
+
+	/* Mirror the DHCPNAK relinquish path: EXPIRE removes old bindings. */
+	if (client -> active) {
+		script_init (client, "EXPIRE", NULL);
+		script_write_params (client, "old_", client -> active);
+		script_write_requested (client);
+		if (client -> alias)
+			script_write_params (client, "alias_", client -> alias);
+		script_go (client);
+
+		destroy_client_lease (client -> active);
+		client -> active = (struct client_lease *)0;
+	}
+
+	/* Stop retransmitting the RENEWING DHCPREQUEST. */
+	cancel_timeout (send_request, client);
+
+	/* PREINIT brings the interface back up for a fresh DISCOVER. */
+	script_init (client, "PREINIT", NULL);
+	if (client -> alias)
+		script_write_params (client, "alias_", client -> alias);
+	script_go (client);
+
+	client -> state = S_INIT;
+	state_init (client);
+}
+
 /* Define a non-authenticated DHCPFORCERENEW handler */
 
 void dhcpforcerenew (packet)
@@ -2518,6 +2564,8 @@ void dhcpforcerenew_request (client, packet)
 	struct client_state *client;
 	struct packet *packet;
 {
+	struct timeval tv;
+
 	if (!client || !packet) {
 		log_error ("forcerenew: invalid client or packet");
 		return;
@@ -2545,6 +2593,13 @@ void dhcpforcerenew_request (client, packet)
 
 	/* Send the DHCPREQUEST packet. */
 	send_request (client);
+
+	/* Enforce spec Tr: if no DHCPNAK arrives within 1s, release and
+	   reconfigure. Without this the client stays in RENEWING until the
+	   lease expires. */
+	tv.tv_sec = cur_time + FORCERENEW_TR_SECONDS;
+	tv.tv_usec = 0;
+	add_timeout (&tv, forcerenew_timeout, client, 0, 0);
 }
 
 /* Send out a DHCPDISCOVER packet, and set a timeout to send out another
